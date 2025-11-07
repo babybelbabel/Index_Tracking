@@ -62,6 +62,7 @@ class Solution:
             self.index_returns,
             self.cardinality,
             simple_corr=simple_corr,
+            replicator_bin=getattr(self.universe.args, "replicator_bin", None),
         )
         return solver.get_weights()
 

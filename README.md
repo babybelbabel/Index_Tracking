@@ -90,6 +90,36 @@ Re-run the script whenever you add more constituent files or need to refresh
 the data window. Pass `--skip-index` if you plan to supply a different index
 return series manually.
 
+## Configuring the ReplicaTOR solver
+
+The QUOB optimiser relies on the standalone C++ `ReplicaTOR` binary. Build it
+separately (for instance under `~/or_tool/ReplicaTOR`) and keep the resulting
+executable accessible on the EC2 instance. The Python wrapper will look for the
+binary in the following order:
+
+1. The `--replicator-bin` CLI flag passed to `main.py`.
+2. The `REPLICATOR_BIN` environment variable.
+3. Common build folders:
+   - `~/or_tool/cmake-build/ReplicaTOR`
+   - `~/or_tool/ReplicaTOR/cmake-build/ReplicaTOR`
+   - `<repo>/or_tool/cmake-build/ReplicaTOR`
+   - `<repo>/or_tool/ReplicaTOR/cmake-build/ReplicaTOR`
+
+Example command line:
+
+```bash
+python main.py \
+  --index russel2000 \
+  --solution_name quob \
+  --cardinality 30 \
+  --start_date 2014-01-02 \
+  --end_date 2023-12-31 \
+  --replicator_bin /home/ubuntu/or_tool/ReplicaTOR/cmake-build/ReplicaTOR
+```
+
+Adjust the arguments to match your rebalancing schedule and data paths. The same
+flag works with the correlation-based variant (`quob_cor`).
+
 ## Troubleshooting large diffs on GitHub
 
 If GitHub refuses to display a diff and reports that the generated diff exceeds
