@@ -242,14 +242,32 @@ class QUOB:
             return None
 
         lines = stdout.splitlines()
-        for idx, line in enumerate(lines):
-            if line.strip().startswith("K Medoid Indices"):
-                if idx + 1 < len(lines):
-                    candidates = lines[idx + 1].strip().split()
-                    try:
-                        return [int(token) for token in candidates]
-                    except ValueError:
-                        return None
+        collecting = False
+        tokens: list[str] = []
+
+        for line in lines:
+            stripped = line.strip()
+
+            if not collecting:
+                if stripped.startswith("K Medoid Indices"):
+                    collecting = True
+                continue
+
+            if not stripped:
+                continue
+
+            if stripped.startswith("Cluster Assignments"):
+                break
+
+            tokens.extend(stripped.split())
+
+        if not tokens:
+            return None
+
+        try:
+            return [int(token) for token in tokens]
+        except ValueError:
+            return None
         return None
 
 
