@@ -4,6 +4,7 @@ import os
 import stat
 import subprocess
 from pathlib import Path
+from typing import Final
 
 import dcor
 import numpy as np
@@ -63,6 +64,20 @@ def _resolve_replicator_bin(explicit: os.PathLike[str] | str | None = None) -> P
     )
 
 
+def _validate_replicator_cores(value: int) -> int:
+    """Ensure the requested ReplicaTOR core count is a positive power of two."""
+
+    if value <= 0:
+        raise ValueError("replicator_cores doit être un entier strictement positif")
+
+    if value & (value - 1) != 0:
+        raise ValueError(
+            "replicator_cores doit être une puissance de deux (1, 2, 4, ...)."
+        )
+
+    return value
+
+
 class QUOB:
     def __init__(
         self,
@@ -84,12 +99,8 @@ class QUOB:
         self.dist_dir.mkdir(parents=True, exist_ok=True)
         self.replicator_bin = _resolve_replicator_bin(replicator_bin)
         self.replicator_time_limit = float(replicator_time_limit)
-        self.replicator_cores = int(replicator_cores)
-        if self.replicator_cores < 1 or self.replicator_cores & (self.replicator_cores - 1) != 0:
-            raise ValueError(
-                "num_cores_per_controller doit être une puissance de deux positive (1, 2, 4, ...)."
-            )
         self.problem_name = "dist_matrix"
+        self.replicator_cores: Final[int] = _validate_replicator_cores(int(replicator_cores))
 
         #construire ma matrice de distance
         if simple_corr:

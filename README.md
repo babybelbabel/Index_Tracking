@@ -142,30 +142,23 @@ Adjust the arguments to match your rebalancing schedule and data paths. The same
 flags work with the correlation-based variant (`quob_cor`). The optional
 `--replicator_time_limit` flag lets you shorten ReplicaTOR runs (in seconds) if
 the default 300 s budget per rebalance window is too long for experimentation.
-When experimenting with larger portfolios (for example `--cardinality 300`),
-consider extending the time limit and upgrading the EC2 instance size so that
-ReplicaTOR has enough CPU headroom to search the much larger solution space.
+`--replicator_cores` controls the `num_cores_per_controller` value written to the
+ReplicaTOR parameter file. The solver expects a strictly positive power of two
+and will launch that many worker threads per controller when the host has spare
+vCPUs. When experimenting with larger portfolios (for example `--cardinality
+300`), consider extending the time limit, increasing the core count and
+upgrading the EC2 instance size so that ReplicaTOR has enough CPU headroom to
+search the much larger solution space.
 
 When ReplicaTOR finishes, the wrapper now saves the medoid assignments to
 `prafa/dist_matrix/dist_matrix.clusters.txt`. The `K` medoid indices still live
 in `dist_matrix.soln.txt` (or, on older builds, `dist_matrix.soln`); the wrapper
 accepts both names. The companion clusters file is derived from the distance
 matrix after the solve and is therefore free of the all-zero placeholder array
-printed by ReplicaTOR itself.
-
-When you expose more parallelism with `--replicator_cores`, keep the following
-trade-offs in mind:
-
-* The value must be a power of two (1, 2, 4, ...) and should not exceed the
-  number of vCPUs available on the EC2 instance—otherwise the operating system
-  will time-slice the threads, wasting cycles.
-* Each additional core increases CPU usage proportionally. On burstable or
-  oversubscribed instance families this can lead to throttling; prefer
-  compute-optimised nodes when raising the value beyond 1.
-* ReplicaTOR benefits from more threads only while the annealing loop is
-  compute-bound. If the distance matrix construction or I/O dominates a given
-  run, increasing the core count yields little improvement while still burning
-  extra CPU credits.
+printed by ReplicaTOR itself. If you set `--replicator_cores` to a power of two
+greater than one, the generated `.params` file reflects that choice so ReplicaTOR
+can spawn additional worker threads (subject to the compiled binary supporting
+multi-threading on the target instance).
 
 ## Troubleshooting large diffs on GitHub
 
