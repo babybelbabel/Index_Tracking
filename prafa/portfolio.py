@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import pickle
 from datetime import datetime
-from typing import Dict
+from typing import Dict, TYPE_CHECKING
 
 import numpy as np
 
-from prafa.gurobi import Gurobi
 from prafa.quob import QUOB
 from prafa.universe import Universe
+
+if TYPE_CHECKING:  # pragma: no cover - optional dependency only needed for type checking
+    from prafa.gurobi import Gurobi
 
 
 class Portfolio:
@@ -67,6 +69,14 @@ class Solution:
         return solver.get_weights()
 
     def _solve_with_gurobi(self, simple_corr: bool = False) -> np.ndarray:
+        try:
+            from prafa.gurobi import Gurobi
+        except ModuleNotFoundError as exc:  # pragma: no cover - hard to simulate without uninstalling gurobi
+            raise ModuleNotFoundError(
+                "La solution 'gurobi' requiert l'installation du paquet 'gurobipy'. "
+                "Veuillez installer Gurobi avant d'utiliser cette option."
+            ) from exc
+
         solver = Gurobi(
             self.stocks_returns,
             self.index_returns,
