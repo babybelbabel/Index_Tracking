@@ -90,6 +90,25 @@ Re-run the script whenever you add more constituent files or need to refresh
 the data window. Pass `--skip-index` if you plan to supply a different index
 return series manually.
 
+## Choosing an EC2 instance type for ReplicaTOR
+
+The Russell 2000 workflow is CPU bound: building distance matrices is
+`O(n^2)` and ReplicaTOR spends most of its time in simulated annealing.
+For good turnaround times:
+
+* Use a compute-optimised family (for example `c6i`) so you get high
+  per-core performance at a reasonable cost.
+* `c6i.2xlarge` (8 vCPUs, 16 GiB RAM) is a solid baseline for 30–300
+  medoids. Move to `c6i.4xlarge` or similar if you routinely run with
+  higher cardinalities or longer ReplicaTOR time limits.
+* Stop the instance and resize it in the AWS console before launching
+  the larger jobs. Keep an eye on CPU utilisation with CloudWatch or
+  `htop`; if a run consistently pegs all cores for the entire solve
+  window, scale up again.
+* Memory pressure is usually modest (a 3 000 × 3 000 distance matrix is
+  roughly 70 MB), so you only need a memory-optimised family if you plan
+  to work with substantially larger universes.
+
 ## Configuring the ReplicaTOR solver
 
 The QUOB optimiser relies on the standalone C++ `ReplicaTOR` binary. Build it
