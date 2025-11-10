@@ -122,6 +122,9 @@ Adjust the arguments to match your rebalancing schedule and data paths. The same
 flags work with the correlation-based variant (`quob_cor`). The optional
 `--replicator_time_limit` flag lets you shorten ReplicaTOR runs (in seconds) if
 the default 300 s budget per rebalance window is too long for experimentation.
+When experimenting with larger portfolios (for example `--cardinality 300`),
+consider extending the time limit and upgrading the EC2 instance size so that
+ReplicaTOR has enough CPU headroom to search the much larger solution space.
 
 When ReplicaTOR finishes, the wrapper now saves the medoid assignments to
 `prafa/dist_matrix/dist_matrix.clusters.txt`. The `K` medoid indices still live
