@@ -95,13 +95,25 @@ class Universe:
         else:
             self.update_stock_list(start)
 
+        print(
+            "📈 Préparation de l'univers :",
+            f"fenêtre {start.date()} → {end.date()}",
+            f"({len(self.stock_list)} titres dans la composition annuelle)",
+        )
+
         valid_stocks = [stock for stock in self.stock_list if stock in self.df_return_all.columns]
         missing_stocks = sorted(set(self.stock_list) - set(valid_stocks))
         if missing_stocks:
             print(
                 "⚠️ Les actions suivantes ne sont pas dans les données de rendement : "
-                + ", ".join(missing_stocks)
+                + ", ".join(missing_stocks[:20])
+                + (" …" if len(missing_stocks) > 20 else ""),
             )
+
+        print(
+            "  • Titres disponibles dans les rendements :",
+            f"{len(valid_stocks)}/{len(self.stock_list)}",
+        )
 
         ordered_stocks = [stock for stock in self.df_return_all.columns if stock in valid_stocks]
         returns_slice = self.df_return_all.loc[start:end, ordered_stocks].copy()
@@ -112,8 +124,18 @@ class Universe:
         non_missing_mask = returns_slice.notna().any(axis=0)
         filtered_returns = returns_slice.loc[:, non_missing_mask]
 
+        print(
+            "  • Titres actifs (avec au moins une observation) :",
+            f"{filtered_returns.shape[1]}/{returns_slice.shape[1]}",
+        )
+
         variance_mask = filtered_returns.var(axis=0, skipna=True) > 0
         filtered_returns = filtered_returns.loc[:, variance_mask]
+
+        print(
+            "  • Titres avec variance strictement positive :",
+            f"{filtered_returns.shape[1]}/{returns_slice.shape[1]}",
+        )
 
         dropped = [
             stock
