@@ -42,6 +42,11 @@ def Main():
     #nombre de jours 
     parser.add_argument('--T', type=int, default=3, help="nombre d'année pour l'entrainement")
     parser.add_argument('--rebalancing', type=int, default=12, help="Month increment for rebalancing")
+    parser.add_argument(
+        '--filter_inactive',
+        action='store_true',
+        help="Supprime les titres inactifs ou constants avant l'optimisation (désactivé par défaut).",
+    )
     args = parser.parse_args()
     
   

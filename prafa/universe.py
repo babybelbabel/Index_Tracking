@@ -118,38 +118,51 @@ class Universe:
         ordered_stocks = [stock for stock in self.df_return_all.columns if stock in valid_stocks]
         returns_slice = self.df_return_all.loc[start:end, ordered_stocks].copy()
 
-        # Drop columns that never trade (all NaN) or stay constant across the
-        # training window. They only contribute noise to the optimisation while
-        # dramatically increasing the cost of building the distance matrix.
         non_missing_mask = returns_slice.notna().any(axis=0)
-        filtered_returns = returns_slice.loc[:, non_missing_mask]
+        variance_mask = returns_slice.var(axis=0, skipna=True) > 0
+        active_count = int(non_missing_mask.sum())
+        positive_count = int((non_missing_mask & variance_mask).sum())
 
         print(
             "  • Titres actifs (avec au moins une observation) :",
-            f"{filtered_returns.shape[1]}/{returns_slice.shape[1]}",
+            f"{active_count}/{returns_slice.shape[1]}",
         )
-
-        variance_mask = filtered_returns.var(axis=0, skipna=True) > 0
-        filtered_returns = filtered_returns.loc[:, variance_mask]
 
         print(
             "  • Titres avec variance strictement positive :",
-            f"{filtered_returns.shape[1]}/{returns_slice.shape[1]}",
+            f"{positive_count}/{returns_slice.shape[1]}",
         )
 
-        dropped = [
-            stock
-            for stock in ordered_stocks
-            if stock not in filtered_returns.columns
-        ]
-        if dropped:
-            preview = ", ".join(dropped[:50])
-            suffix = " …" if len(dropped) > 50 else ""
-            print(
-                "⚠️ Suppression des titres sans activité ou constants sur la fenêtre : "
-                + preview
-                + suffix
-            )
+        filter_inactive = getattr(self.args, "filter_inactive", False)
+
+        if filter_inactive:
+            filtered_returns = returns_slice.loc[:, non_missing_mask & variance_mask]
+            dropped = [
+                stock
+                for stock in ordered_stocks
+                if stock not in filtered_returns.columns
+            ]
+            if dropped:
+                preview = ", ".join(dropped[:50])
+                suffix = " …" if len(dropped) > 50 else ""
+                print(
+                    "⚠️ Suppression des titres sans activité ou constants sur la fenêtre : "
+                    + preview
+                    + suffix
+                )
+        else:
+            filtered_returns = returns_slice
+            kept_mask = (non_missing_mask & variance_mask)
+            kept_mask = kept_mask.reindex(filtered_returns.columns, fill_value=False)
+            dropped = [stock for stock, keep in kept_mask.items() if not keep]
+            if dropped:
+                preview = ", ".join(dropped[:50])
+                suffix = " …" if len(dropped) > 50 else ""
+                print(
+                    "⚠️ Titres inactifs conservés (filtrage désactivé) : "
+                    + preview
+                    + suffix
+                )
 
         if filtered_returns.empty or filtered_returns.shape[1] == 0:
             raise ValueError(

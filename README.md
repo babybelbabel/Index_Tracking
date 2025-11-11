@@ -186,6 +186,11 @@ portfolios (for example `--cardinality 300`), consider extending the time limit,
 increasing the core count and upgrading the EC2 instance size so that ReplicaTOR
 has enough CPU headroom to search the much larger solution space.
 
+By default the pipeline now keeps inactive or constant securities in the
+training window. Pass `--filter_inactive` if you prefer to drop those tickers
+before computing the distance matrix (for example to mimic the original S&P 500
+behaviour).
+
 When ReplicaTOR finishes, the wrapper now saves the medoid assignments to
 `prafa/dist_matrix/dist_matrix.clusters.txt`. The `K` medoid indices still live
 in `dist_matrix.soln.txt` (or, on older builds, `dist_matrix.soln`); the wrapper
