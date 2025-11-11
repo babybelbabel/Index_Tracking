@@ -9,6 +9,7 @@ from typing import Final
 
 import dcor
 import numpy as np
+from numpy import typing as npt
 from scipy.optimize import minimize
 
 
@@ -113,22 +114,65 @@ class QUOB:
         
 
 
-    def matrix_dcor(self):
-        
-        Welsch_function = lambda x : 1 - np.exp(-0.5 * x)
+    def matrix_dcor(self) -> None:
 
-        n = self.stocks_returns.shape[1]
-        dcor_mat = np.zeros((n, n))
-        
-        for i in range(n):
-            for j in range(i, n):
-                dcor_val = dcor.distance_correlation(self.stocks_returns[:, i], self.stocks_returns[:, j])
-                dist = 1 - dcor_val
-                dcor_mat[i, j] = dcor_mat[j, i] = Welsch_function(dist) #Welsch_function(dist)
-    
-        self.distance_matrix = dcor_mat
+        def _welsch(x: npt.ArrayLike) -> npt.NDArray[np.float64]:
+            return 1 - np.exp(-0.5 * np.asarray(x))
+
+        n_samples, n_assets = self.stocks_returns.shape
+
+        if n_assets == 0:
+            raise ValueError(
+                "Impossible de calculer la matrice de distance : aucun titre disponible dans la fenêtre."
+            )
+
+        if n_samples < 2:
+            raise ValueError(
+                "La fenêtre d'entraînement ne contient pas suffisamment d'observations (moins de deux jours). "
+                "Ajustez les paramètres --start_date ou --T pour disposer d'un historique exploitable."
+            )
+
+        try:
+            distance_matrix = self._compute_dcor_matrix(n_assets)
+        except Exception as exc:  # pragma: no cover - dépend du backend dcor
+            print(
+                "⚠️ Échec du calcul de la distance de corrélation (dcor). Passage à la corrélation de Pearson.",
+                f"Raison : {exc}",
+            )
+            distance_matrix = self._compute_corr_distance()
+        else:
+            distance_matrix = _welsch(distance_matrix)
+
+        self.distance_matrix = distance_matrix
         matrix_path = self.dist_dir / f"{self.problem_name}.d"
-        np.savetxt(matrix_path, dcor_mat)
+        np.savetxt(matrix_path, distance_matrix)
+
+    def _compute_dcor_matrix(self, n_assets: int) -> np.ndarray:
+        welsch_input = np.zeros((n_assets, n_assets))
+
+        progress_step = max(1, n_assets // 10)
+
+        for i in range(n_assets):
+            if n_assets >= 100 and i % progress_step == 0:
+                print(f"  • Calcul des corrélations de distance : ligne {i + 1}/{n_assets}")
+
+            for j in range(i, n_assets):
+                dcor_val = dcor.distance_correlation(
+                    self.stocks_returns[:, i],
+                    self.stocks_returns[:, j],
+                )
+                dist = 1 - dcor_val
+                welsch_input[i, j] = welsch_input[j, i] = dist
+
+        return welsch_input
+
+    def _compute_corr_distance(self) -> np.ndarray:
+        corr_matrix = np.corrcoef(self.stocks_returns, rowvar=False)
+        corr_matrix = np.nan_to_num(corr_matrix, nan=0.0, posinf=0.0, neginf=0.0)
+
+        distance_func = lambda di: np.sqrt(0.5 * (1 - di))
+        distance_matrix = distance_func(corr_matrix)
+        return 1 - np.exp(-0.5 * distance_matrix)
 
 
 

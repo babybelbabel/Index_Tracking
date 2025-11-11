@@ -161,6 +161,11 @@ class Universe:
         index_slice = self.df_index_all.loc[start:end].copy().fillna(0)
 
         common_index = returns_slice.index.intersection(index_slice.index)
+        if common_index.empty:
+            raise ValueError(
+                "Aucune date commune entre les rendements actions et l'indice sur cette fenêtre. "
+                "Vérifiez vos paramètres --start_date/--end_date ou réduisez la fenêtre --T."
+            )
         self.df_return = returns_slice.loc[common_index]
         self.df_index = index_slice.loc[common_index]
         self.stock_list = list(self.df_return.columns)
