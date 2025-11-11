@@ -121,9 +121,18 @@ class Universe:
             if stock not in filtered_returns.columns
         ]
         if dropped:
+            preview = ", ".join(dropped[:50])
+            suffix = " …" if len(dropped) > 50 else ""
             print(
                 "⚠️ Suppression des titres sans activité ou constants sur la fenêtre : "
-                + ", ".join(dropped)
+                + preview
+                + suffix
+            )
+
+        if filtered_returns.empty or filtered_returns.shape[1] == 0:
+            raise ValueError(
+                "Aucune série de rendements exploitable pour la fenêtre sélectionnée. "
+                "Réduisez --T ou choisissez une date de début plus tardive."
             )
 
         returns_slice = filtered_returns.fillna(0)

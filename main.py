@@ -59,9 +59,20 @@ def Main():
 
     data_start = universe.get_data_start_date()
 
-    #liste des dates de rebalancement
-    start_date = max(pd.to_datetime(args.start_date), data_start)
+    # With a rolling window of ``T`` years we need at least that amount of
+    # history before the first rebalance can take place.  Otherwise the
+    # training slice collapses to a single day which in turn removes every
+    # security during the variance screening stage.
+    earliest_rebalance = data_start + portfolio_duration
+
+    start_date = max(pd.to_datetime(args.start_date), earliest_rebalance)
     end_date = pd.to_datetime(args.end_date)
+
+    if start_date >= end_date:
+        raise ValueError(
+            "La période disponible est insuffisante pour un rebalance : "
+            "ajustez --start_date/--end_date ou réduisez la fenêtre --T."
+        )
 
     dates = [start_date]
     current_date = start_date + time_increment
