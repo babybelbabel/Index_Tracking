@@ -104,7 +104,29 @@ class Universe:
             )
 
         ordered_stocks = [stock for stock in self.df_return_all.columns if stock in valid_stocks]
-        returns_slice = self.df_return_all.loc[start:end, ordered_stocks].copy().fillna(0)
+        returns_slice = self.df_return_all.loc[start:end, ordered_stocks].copy()
+
+        # Drop columns that never trade (all NaN) or stay constant across the
+        # training window. They only contribute noise to the optimisation while
+        # dramatically increasing the cost of building the distance matrix.
+        non_missing_mask = returns_slice.notna().any(axis=0)
+        filtered_returns = returns_slice.loc[:, non_missing_mask]
+
+        variance_mask = filtered_returns.var(axis=0, skipna=True) > 0
+        filtered_returns = filtered_returns.loc[:, variance_mask]
+
+        dropped = [
+            stock
+            for stock in ordered_stocks
+            if stock not in filtered_returns.columns
+        ]
+        if dropped:
+            print(
+                "⚠️ Suppression des titres sans activité ou constants sur la fenêtre : "
+                + ", ".join(dropped)
+            )
+
+        returns_slice = filtered_returns.fillna(0)
         index_slice = self.df_index_all.loc[start:end].copy().fillna(0)
 
         common_index = returns_slice.index.intersection(index_slice.index)
