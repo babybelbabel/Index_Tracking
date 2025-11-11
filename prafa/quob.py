@@ -188,11 +188,22 @@ class QUOB:
         with open(params_path, "w", encoding="utf-8") as f:
             f.write(param)
 
+        env = os.environ.copy()
+        # Several ReplicaTOR builds rely on OpenMP for intra-controller parallelism.
+        # Enforcing ``OMP_NUM_THREADS`` ensures the solver honours the requested
+        # ``num_cores_per_controller`` value instead of silently defaulting to a
+        # single CPU even when the parameter file requests more threads.
+        env["OMP_NUM_THREADS"] = str(self.replicator_cores)
+        # Some builds also look at this environment variable; setting it is
+        # harmless when unsupported and keeps behaviour consistent.
+        env["REPLICATOR_NUM_CORES"] = str(self.replicator_cores)
+
         completed = subprocess.run(
             [self.replicator_bin.as_posix(), params_path.as_posix()],
             check=False,
             capture_output=True,
             text=True,
+            env=env,
         )
 
         if completed.stdout:

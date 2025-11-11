@@ -178,10 +178,13 @@ the default 300 s budget per rebalance window is too long for experimentation.
 `--replicator_cores` controls the `num_cores_per_controller` value written to the
 ReplicaTOR parameter file. The solver expects a strictly positive power of two
 and will launch that many worker threads per controller when the host has spare
-vCPUs. When experimenting with larger portfolios (for example `--cardinality
-300`), consider extending the time limit, increasing the core count and
-upgrading the EC2 instance size so that ReplicaTOR has enough CPU headroom to
-search the much larger solution space.
+vCPUs. The wrapper now forces `OMP_NUM_THREADS` (and the legacy
+`REPLICATOR_NUM_CORES`) to the requested value before invoking ReplicaTOR so
+that OpenMP-enabled builds actually honour the requested parallelism; if you
+need a different limit simply adjust `--replicator_cores`. When experimenting with larger
+portfolios (for example `--cardinality 300`), consider extending the time limit,
+increasing the core count and upgrading the EC2 instance size so that ReplicaTOR
+has enough CPU headroom to search the much larger solution space.
 
 When ReplicaTOR finishes, the wrapper now saves the medoid assignments to
 `prafa/dist_matrix/dist_matrix.clusters.txt`. The `K` medoid indices still live
