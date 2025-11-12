@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from typing import Final
 
 import dcor
@@ -50,6 +51,7 @@ class Gurobi:
 
         self.idx: list[int] | None = None
         self.distance_matrix: np.ndarray | None = None
+        self._env = self._create_env()
 
     # ------------------------------------------------------------------
     # Matrices de distance
@@ -150,7 +152,7 @@ class Gurobi:
         c = beta * (distance_matrix @ ones)
 
         try:
-            model = gp.Model("BQO_compact")
+            model = gp.Model("BQO_compact", env=self._env)
         except gp.GurobiError as exc:  # pragma: no cover - dépend de l'installation Gurobi
             raise RuntimeError(
                 "Impossible de démarrer Gurobi. Vérifiez votre licence et l'installation de gurobipy."
@@ -172,30 +174,37 @@ class Gurobi:
         )
 
         try:
-            model.optimize()
-        except gp.GurobiError as exc:  # pragma: no cover - dépend de Gurobi
-            raise RuntimeError(f"Gurobi a échoué durant l'optimisation : {exc}") from exc
+            try:
+                model.optimize()
+            except gp.GurobiError as exc:  # pragma: no cover - dépend de Gurobi
+                raise RuntimeError(f"Gurobi a échoué durant l'optimisation : {exc}") from exc
 
-        status = model.Status
-        status_name = _status_name(status)
+            status = model.Status
+            status_name = _status_name(status)
 
-        if status in (GRB.OPTIMAL, GRB.TIME_LIMIT, GRB.SUBOPTIMAL):
-            if model.SolCount == 0:
+            if status in (GRB.OPTIMAL, GRB.TIME_LIMIT, GRB.SUBOPTIMAL):
+                if model.SolCount == 0:
+                    raise RuntimeError(
+                        "Gurobi n'a retourné aucune solution exploitable malgré le statut de fin obtenu."
+                    )
+                if status == GRB.TIME_LIMIT:
+                    print(
+                        "⚠️ Gurobi a atteint la limite de temps mais une solution réalisable a été conservée."
+                    )
+                elif status == GRB.SUBOPTIMAL:
+                    print(
+                        "⚠️ Gurobi a terminé avec un statut suboptimal. Utilisation de la meilleure solution disponible."
+                    )
+            else:
                 raise RuntimeError(
-                    "Gurobi n'a retourné aucune solution exploitable malgré le statut de fin obtenu."
+                    "Gurobi s'est arrêté avec le statut "
+                    f"{status_name}. Consultez les logs ci-dessus pour plus de détails."
                 )
-            if status == GRB.TIME_LIMIT:
-                print("⚠️ Gurobi a atteint la limite de temps mais une solution réalisable a été conservée.")
-            elif status == GRB.SUBOPTIMAL:
-                print("⚠️ Gurobi a terminé avec un statut suboptimal. Utilisation de la meilleure solution disponible.")
-        else:
-            raise RuntimeError(
-                "Gurobi s'est arrêté avec le statut "
-                f"{status_name}. Consultez les logs ci-dessus pour plus de détails."
-            )
 
-        solution = z.X
-        return solution
+            solution = z.X.copy()
+            return solution
+        finally:
+            model.dispose()
 
     def calc_weights(self) -> np.ndarray:
         stock_pick_binary = self.stock_picking(self.stocks_returns.shape[1])
@@ -235,4 +244,58 @@ class Gurobi:
         micro_weight = self.calc_weights()
         for local_idx, global_idx in enumerate(self.idx or []):
             weight_global[global_idx] = micro_weight[local_idx]
-        return weight_global
+
+        try:
+            return weight_global
+        finally:  # pragma: no cover - dispose peut échouer selon l'environnement
+            try:
+                self._env.dispose()
+            except gp.GurobiError:
+                pass
+
+    # ------------------------------------------------------------------
+    # Gestion de l'environnement Gurobi
+    # ------------------------------------------------------------------
+    def _create_env(self) -> gp.Env:
+        try:
+            env = gp.Env(empty=True)
+        except gp.GurobiError as exc:  # pragma: no cover - dépend de l'installation Gurobi
+            raise RuntimeError(
+                "Impossible d'initialiser l'environnement Gurobi. Vérifiez votre installation."
+            ) from exc
+
+        access_id = os.environ.get("GRB_WLSACCESSID")
+        secret_key = os.environ.get("GRB_WLSSECRET")
+        license_id = os.environ.get("GRB_LICENSEID")
+
+        if any((access_id, secret_key, license_id)):
+            missing = [
+                name
+                for name, value in (
+                    ("GRB_WLSACCESSID", access_id),
+                    ("GRB_WLSSECRET", secret_key),
+                    ("GRB_LICENSEID", license_id),
+                )
+                if not value
+            ]
+            if missing:
+                raise RuntimeError(
+                    "La configuration WLS est incomplète. Variables manquantes : "
+                    + ", ".join(missing)
+                )
+
+            env.setParam("WLSACCESSID", access_id)
+            env.setParam("WLSSECRET", secret_key)
+            try:
+                env.setParam("LICENSEID", int(license_id))
+            except ValueError:
+                env.setParam("LICENSEID", license_id)
+
+        try:
+            env.start()
+        except gp.GurobiError as exc:  # pragma: no cover - dépend de l'installation Gurobi
+            raise RuntimeError(
+                "Gurobi n'a pas pu démarrer l'environnement. Vérifiez vos identifiants de licence."
+            ) from exc
+
+        return env
