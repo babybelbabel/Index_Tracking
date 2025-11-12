@@ -130,7 +130,7 @@ Example command line:
 python main.py \
   --index russel3000 \
   --solution_name quob \
-  --cardinality 30 \
+  --cardinality 300 \
   --start_date 2014-01-02 \
   --end_date 2023-12-31 \
   --replicator_bin /home/ubuntu/or_tool/ReplicaTOR/cmake-build/ReplicaTOR \
