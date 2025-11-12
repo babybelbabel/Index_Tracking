@@ -38,6 +38,13 @@ def Main():
     parser.add_argument('--replicator_time_limit', type=float, default=300.0,
                     help="Durée maximale (en secondes) accordée à ReplicaTOR pour chaque fenêtre de rebalancement")
 
+    parser.add_argument(
+        '--gurobi_time_limit',
+        type=float,
+        default=10800.0,
+        help="Durée maximale (en secondes) accordée à Gurobi pour chaque fenêtre de rebalancement",
+    )
+
 
     #nombre de jours 
     parser.add_argument('--T', type=int, default=3, help="nombre d'année pour l'entrainement")

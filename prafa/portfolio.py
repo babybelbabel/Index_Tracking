@@ -84,6 +84,7 @@ class Solution:
             self.index_returns,
             self.cardinality,
             simple_corr=simple_corr,
+            time_limit=getattr(self.universe.args, "gurobi_time_limit", 10800.0),
         )
         return solver.get_weights()
 

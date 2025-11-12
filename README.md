@@ -168,6 +168,35 @@ greater than one, the generated `.params` file reflects that choice so ReplicaTO
 can spawn additional worker threads (subject to the compiled binary supporting
 multi-threading on the target instance).
 
+## Running the Gurobi baseline
+
+The project also exposes a mixed-integer baseline solved with Gurobi so you can
+benchmark QUOB against a deterministic optimiser. Install `gurobipy` inside the
+virtual environment (for example via the `pip install` script shipped with the
+Gurobi distribution) and make sure the licence has been activated on the EC2
+instance (`grbgetkey` or a floating licence).
+
+Launch the binary quadratic formulation with:
+
+```bash
+python main.py \
+  --index russel3000 \
+  --solution_name gurobi \
+  --cardinality 300 \
+  --start_date 2014-01-02 \
+  --end_date 2023-12-31 \
+  --gurobi_time_limit 10800
+```
+
+Each rebalance window receives a three-hour time budget by default (10 800 s).
+Gurobi streams its own progress log to the console and the wrapper prints a
+summary of the exit status (optimal, time limit, suboptimal). If the solver hits
+the time limit, the best incumbent solution is kept automatically so that the
+subsequent continuous reweighting step can still proceed. Adjust
+`--gurobi_time_limit` if you need shorter experiments or, conversely, longer
+searches. Any `GurobiError` raised during the solve is rethrown with a concise
+message so you can troubleshoot licence or model issues quickly.
+
 ## Analysing Russell 3000 portfolios
 
 After ReplicaTOR (or an alternative solver) has produced a portfolio snapshot
