@@ -21,6 +21,16 @@ class Portfolio:
         self.universe = universe
         # Mapping from rebalancing date to the weights produced by the solver.
         self.portfolios: Dict[datetime, dict] = {}
+        args = universe.args
+        self.metadata = {
+            "index": getattr(args, "index", None),
+            "solution_name": getattr(args, "solution_name", None),
+            "cardinality": getattr(args, "cardinality", None),
+            "rebalancing": getattr(args, "rebalancing", None),
+            "training_years": getattr(args, "T", None),
+            "filter_inactive": getattr(args, "filter_inactive", None),
+            "generated_at": datetime.utcnow().isoformat(timespec="seconds"),
+        }
 
     def rebalance_portfolio(self, start_datetime: datetime, end_datetime: datetime) -> np.ndarray:
         """Recompute the portfolio weights for the requested time window."""
@@ -48,8 +58,12 @@ class Portfolio:
             f"{self.universe.args.result_path}/"
             f"portfolio_{self.universe.args.index}_{self.universe.args.solution_name}_{self.universe.args.cardinality}.json"
         )
+        payload = {
+            "metadata": self.metadata,
+            "snapshots": self.portfolios,
+        }
         with open(path, "wb") as handle:
-            pickle.dump(self.portfolios, handle)
+            pickle.dump(payload, handle)
             print("les portefeuilles ont été enregistrés!! pret a réalisé le backtest")
 
     def __del__(self) -> None:  # pragma: no cover - destructor semantics are hard to unit test.

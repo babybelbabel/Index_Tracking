@@ -263,6 +263,31 @@ that each rebalance window launches a brand new Gurobi instance, so the solver
 timer resets to zero at the beginning of every window; this is expected and does
 not mean the entire pipeline restarted from scratch.
 
+### Resetting artefacts before rerunning an optimisation
+
+Changing the optimisation schedule (for example switching from annual to
+quarterly rebalancing via `--rebalancing 3`, adjusting the training window
+`--T`, toggling `--filter_inactive`, or simply testing a new solver) requires a
+fresh set of ReplicaTOR/Gurobi runs. The saved portfolios contain the full
+weight vectors for the previous configuration, so trying to backtest them after
+changing the schedule inevitably leads to inconsistencies. Before launching a
+long optimisation, clear the artefacts from the previous run:
+
+```bash
+cd ~/Index_Tracking
+rm -f prafa/dist_matrix/dist_matrix.*
+rm -f results/portfolio_${INDEX}_${SOLUTION}_${CARDINALITY}.json
+rm -rf analyses/${INDEX}
+```
+
+Replace the variables with the actual index/solver names you use. Removing the
+old distance matrix ensures ReplicaTOR rebuilds it for the new window sizes,
+while deleting the saved portfolio file prevents the analyser from loading
+weights that were computed with a different schedule. Because each optimisation
+window can take hours to finish, double-check your CLI parameters (especially
+`--rebalancing`, `--T`, `--cardinality`, and the inactive-stock filter) before
+relaunching the command.
+
 #### Troubleshooting licence errors
 
 If you still see messages such as *“Restricted license – for non-production use
@@ -321,11 +346,14 @@ several optimisation methods side by side. Each run writes:
   window.
 
 The analyser mirrors the optimisation workflow by replaying the three-year
-training windows (`--training-years`) before evaluating each rebalance. This
-ensures that older portfolio files—those produced before column metadata was
-saved—still align with the current data pipeline. If a portfolio was generated
-without filtering inactive securities, pass `--keep-inactive` so the backtest
-uses the same configuration.
+training windows (`--training-years`) before evaluating each rebalance. Portfolio
+files produced with the current code store their own metadata (filtering mode,
+training window, rebalancing frequency, etc.) and the helper automatically
+applies those settings, warning you when the CLI arguments differ. If you feed
+it a legacy file that predates this metadata, the script falls back to the
+supplied CLI flags; regenerate the portfolio if the alignment still fails. When
+the optimisation deliberately kept inactive securities, pass `--keep-inactive`
+so the backtest uses the same configuration.
 * `analyses/cumulative_returns.png`, `absolute_differences.png` and
   `error_distribution.png` – the key plots used during the S&P 500 analysis.
 * `analyses/summary_metrics.csv` – a compact table with the main statistics for

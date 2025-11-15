@@ -72,6 +72,14 @@ class PortfolioSnapshot:
     columns: list[str] | None = None
 
 
+@dataclass
+class PortfolioFile:
+    """Structure sérialisée des portefeuilles sauvegardés."""
+
+    metadata: dict
+    snapshots: Dict[pd.Timestamp, PortfolioSnapshot]
+
+
 def _parse_portfolio_argument(raw_values: Iterable[str]) -> Dict[str, Path]:
     """Convertit les couples ``label=chemin`` fournis sur la CLI."""
 
@@ -107,14 +115,20 @@ def _build_namespace(args: argparse.Namespace) -> argparse.Namespace:
     return namespace
 
 
-def _load_portfolios(path: Path) -> Dict[pd.Timestamp, PortfolioSnapshot]:
+def _load_portfolios(path: Path) -> PortfolioFile:
     """Charge la structure picklée produite par :meth:`Portfolio.save_portfolio`."""
 
     with open(path, "rb") as handle:
         raw = pickle.load(handle)
 
+    metadata: dict = {}
+    snapshots_source = raw
+    if isinstance(raw, dict) and "snapshots" in raw:
+        snapshots_source = raw.get("snapshots", {})
+        metadata = raw.get("metadata", {}) or {}
+
     portfolios: Dict[pd.Timestamp, PortfolioSnapshot] = {}
-    for key, payload in raw.items():
+    for key, payload in snapshots_source.items():
         timestamp = pd.Timestamp(key)
 
         columns: list[str] | None = None
@@ -133,7 +147,8 @@ def _load_portfolios(path: Path) -> Dict[pd.Timestamp, PortfolioSnapshot]:
 
         portfolios[timestamp] = PortfolioSnapshot(weights=weights, columns=columns)
 
-    return dict(sorted(portfolios.items()))
+    ordered = dict(sorted(portfolios.items()))
+    return PortfolioFile(metadata=metadata, snapshots=ordered)
 
 
 def _compute_out_of_sample(
@@ -141,10 +156,46 @@ def _compute_out_of_sample(
     portfolios: Dict[pd.Timestamp, PortfolioSnapshot],
     analysis_end: pd.Timestamp,
     training_years: int,
+    metadata: dict | None = None,
 ) -> AnalysisResult:
     """Reproduit la logique d'évaluation hors-échantillon du notebook."""
 
+    metadata = metadata or {}
+
     filter_default = bool(getattr(universe_args, "filter_inactive", False))
+    recorded_filter = metadata.get("filter_inactive")
+    if recorded_filter is not None and recorded_filter != filter_default:
+        state = "activé" if recorded_filter else "désactivé"
+        print(
+            "ℹ️ Le portefeuille a été généré avec le filtrage des titres inactifs",
+            f"{state}. L'analyse utilisera cette configuration pour rester cohérente.",
+        )
+
+    preferred_filter = recorded_filter if recorded_filter is not None else filter_default
+
+    recorded_rebalancing = metadata.get("rebalancing")
+    if recorded_rebalancing is not None and recorded_rebalancing != getattr(
+        universe_args, "rebalancing", None
+    ):
+        print(
+            "ℹ️ Rappel : ce portefeuille provient d'un rebalancement tous",
+            f"{recorded_rebalancing} mois. Pensez à relancer l'optimisation si vous",
+            "changez cette fréquence.",
+        )
+
+    cli_training_years = training_years
+    recorded_training = metadata.get("training_years")
+    if recorded_training is not None:
+        training_years = int(recorded_training)
+        if recorded_training != cli_training_years:
+            print(
+                "ℹ️ Utilisation de la fenêtre d'entraînement",
+                f"{recorded_training} ans indiquée dans le portefeuille",
+                f"(au lieu de {cli_training_years}).",
+            )
+
+    training_delta = relativedelta(years=training_years)
+
     universe_cache: dict[bool, Universe] = {}
 
     def get_universe(filter_flag: bool) -> Universe:
@@ -164,10 +215,6 @@ def _compute_out_of_sample(
     index_returns: list[pd.Series] = []
     tracking_error: dict[pd.Timestamp, float] = {}
     absolute_error: dict[pd.Timestamp, float] = {}
-
-    training_delta = relativedelta(years=training_years)
-
-    preferred_filter = filter_default
 
     for idx, rebalance_date in enumerate(sorted_dates):
         start = pd.Timestamp(rebalance_date)
@@ -495,12 +542,13 @@ def main() -> None:
 
     results: Dict[str, AnalysisResult] = {}
     for label, path in portfolios.items():
-        portfolio_data = _load_portfolios(path)
+        portfolio_file = _load_portfolios(path)
         results[label] = _compute_out_of_sample(
             universe_args,
-            portfolio_data,
+            portfolio_file.snapshots,
             analysis_end,
             training_years=args.training_years,
+            metadata=portfolio_file.metadata,
         )
 
     output_dir = Path(args.output_dir)
