@@ -20,21 +20,25 @@ class Portfolio:
     def __init__(self, universe: Universe) -> None:
         self.universe = universe
         # Mapping from rebalancing date to the weights produced by the solver.
-        self.portfolios: Dict[datetime, np.ndarray] = {}
+        self.portfolios: Dict[datetime, dict] = {}
 
     def rebalance_portfolio(self, start_datetime: datetime, end_datetime: datetime) -> np.ndarray:
         """Recompute the portfolio weights for the requested time window."""
         self.universe.new_universe(start_datetime, end_datetime)
         solution = Solution(self, start_datetime, end_datetime)
         start_ts = time.perf_counter()
-        self.portfolios[end_datetime] = solution.solve()
+        weights = solution.solve()
+        self.portfolios[end_datetime] = {
+            "weights": weights,
+            "columns": self.universe.get_stock_namme_in_order(),
+        }
         elapsed = time.perf_counter() - start_ts
         print(
             "✅ Fenêtre optimisée :",
             f"{start_datetime.date()} → {end_datetime.date()}",
             f"(durée {elapsed / 3600:.2f} h)",
         )
-        return self.portfolios[end_datetime]
+        return weights
 
     def get_universe(self) -> Universe:
         return self.universe

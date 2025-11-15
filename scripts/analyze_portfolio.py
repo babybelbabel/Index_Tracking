@@ -61,6 +61,14 @@ class AnalysisResult:
     absolute_error: pd.Series
 
 
+@dataclass
+class PortfolioSnapshot:
+    """Poids sauvegardés pour une date de rebalancement donnée."""
+
+    weights: np.ndarray
+    columns: list[str] | None = None
+
+
 def _parse_portfolio_argument(raw_values: Iterable[str]) -> Dict[str, Path]:
     """Convertit les couples ``label=chemin`` fournis sur la CLI."""
 
@@ -96,22 +104,38 @@ def _build_namespace(args: argparse.Namespace) -> argparse.Namespace:
     return namespace
 
 
-def _load_portfolios(path: Path) -> Dict[pd.Timestamp, np.ndarray]:
+def _load_portfolios(path: Path) -> Dict[pd.Timestamp, PortfolioSnapshot]:
     """Charge la structure picklée produite par :meth:`Portfolio.save_portfolio`."""
 
     with open(path, "rb") as handle:
         raw = pickle.load(handle)
 
-    portfolios: Dict[pd.Timestamp, np.ndarray] = {}
-    for key, weights in raw.items():
+    portfolios: Dict[pd.Timestamp, PortfolioSnapshot] = {}
+    for key, payload in raw.items():
         timestamp = pd.Timestamp(key)
-        portfolios[timestamp] = np.asarray(weights, dtype=float)
+
+        columns: list[str] | None = None
+        if isinstance(payload, dict) and "weights" in payload:
+            weights = np.asarray(payload["weights"], dtype=float)
+            raw_columns = payload.get("columns")
+            if raw_columns is not None:
+                columns = [str(col) for col in raw_columns]
+        else:
+            weights = np.asarray(payload, dtype=float)
+
+        if columns is not None and len(columns) != weights.shape[0]:
+            raise ValueError(
+                "Le fichier de portefeuille contient un couple (poids, colonnes) de longueurs différentes."
+            )
+
+        portfolios[timestamp] = PortfolioSnapshot(weights=weights, columns=columns)
+
     return dict(sorted(portfolios.items()))
 
 
 def _compute_out_of_sample(
     universe_args: argparse.Namespace,
-    portfolios: Dict[pd.Timestamp, np.ndarray],
+    portfolios: Dict[pd.Timestamp, PortfolioSnapshot],
     analysis_end: pd.Timestamp,
 ) -> AnalysisResult:
     """Reproduit la logique d'évaluation hors-échantillon du notebook."""
@@ -146,13 +170,19 @@ def _compute_out_of_sample(
         universe.new_universe(start, end, training=False)
         stock_returns = universe.get_stocks_returns()
         index_slice = universe.get_index_returns()
-        weights = portfolios[rebalance_date]
+        snapshot = portfolios[rebalance_date]
 
-        if stock_returns.shape[1] != weights.shape[0]:
-            raise ValueError(
-                "Incohérence entre le nombre de titres dans les données et la longueur "
-                "du vecteur de poids sauvegardé."
-            )
+        if snapshot.columns is not None:
+            weights_series = pd.Series(snapshot.weights, index=snapshot.columns, dtype=float)
+            aligned = weights_series.reindex(stock_returns.columns).fillna(0.0)
+            weights = aligned.values
+        else:
+            weights = snapshot.weights
+            if stock_returns.shape[1] != weights.shape[0]:
+                raise ValueError(
+                    "Incohérence entre le nombre de titres dans les données et la longueur "
+                    "du vecteur de poids sauvegardé."
+                )
 
         portfolio_series = pd.Series(
             stock_returns.values @ weights,
