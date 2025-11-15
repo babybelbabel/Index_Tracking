@@ -25,6 +25,7 @@ exporte les figures et les séries temporelles sous ``--output-dir``.
 from __future__ import annotations
 
 import argparse
+import copy
 import pickle
 from dataclasses import dataclass
 from pathlib import Path
@@ -143,7 +144,15 @@ def _compute_out_of_sample(
 ) -> AnalysisResult:
     """Reproduit la logique d'évaluation hors-échantillon du notebook."""
 
-    universe = Universe(universe_args)
+    filter_default = bool(getattr(universe_args, "filter_inactive", False))
+    universe_cache: dict[bool, Universe] = {}
+
+    def get_universe(filter_flag: bool) -> Universe:
+        if filter_flag not in universe_cache:
+            cloned_args = copy.deepcopy(universe_args)
+            cloned_args.filter_inactive = filter_flag
+            universe_cache[filter_flag] = Universe(cloned_args)
+        return universe_cache[filter_flag]
 
     sorted_dates = list(sorted(portfolios.keys()))
     if len(sorted_dates) < 2:
@@ -157,6 +166,8 @@ def _compute_out_of_sample(
     absolute_error: dict[pd.Timestamp, float] = {}
 
     training_delta = relativedelta(years=training_years)
+
+    preferred_filter = filter_default
 
     for idx, rebalance_date in enumerate(sorted_dates):
         start = pd.Timestamp(rebalance_date)
@@ -172,16 +183,55 @@ def _compute_out_of_sample(
         if end < start:
             continue
 
-        training_start = max(start - training_delta, universe.get_data_start_date())
-        universe.new_universe(training_start, start, training=True)
-        training_columns = universe.get_stock_namme_in_order()
-
-        universe.new_universe(start, end, training=False)
-        stock_returns = universe.get_stocks_returns()
-        index_slice = universe.get_index_returns()
         snapshot = portfolios[rebalance_date]
 
-        source_columns = snapshot.columns or training_columns
+        candidate_flags = [preferred_filter]
+        opposite_flag = not preferred_filter
+        if opposite_flag not in candidate_flags:
+            candidate_flags.append(opposite_flag)
+
+        chosen_universe: Universe | None = None
+        source_columns: list[str] | None = None
+        chosen_flag: bool | None = None
+        mismatch_error: ValueError | None = None
+
+        for flag in candidate_flags:
+            candidate_universe = get_universe(flag)
+            training_start = max(
+                start - training_delta, candidate_universe.get_data_start_date()
+            )
+            candidate_universe.new_universe(training_start, start, training=True)
+            training_columns = candidate_universe.get_stock_namme_in_order()
+            columns = snapshot.columns or training_columns
+
+            if snapshot.columns is not None and len(columns) != len(snapshot.weights):
+                mismatch_error = ValueError(
+                    "Les métadonnées du portefeuille (colonnes) ne correspondent pas aux poids enregistrés. "
+                    "Re-générez le portefeuille pour corriger ce fichier."
+                )
+                continue
+
+            if len(columns) == len(snapshot.weights):
+                chosen_universe = candidate_universe
+                source_columns = columns
+                chosen_flag = flag
+                break
+
+        if chosen_universe is None or source_columns is None or chosen_flag is None:
+            if mismatch_error is not None:
+                raise mismatch_error
+            raise ValueError(
+                "Impossible d'aligner les poids sauvegardés avec les séries de rendements. "
+                "Essayez de relancer l'analyse avec --keep-inactive si l'optimisation initiale conservait "
+                "les titres inactifs."
+            )
+
+        preferred_filter = chosen_flag
+
+        chosen_universe.new_universe(start, end, training=False)
+        stock_returns = chosen_universe.get_stocks_returns()
+        index_slice = chosen_universe.get_index_returns()
+
         weights_series = pd.Series(snapshot.weights, index=source_columns, dtype=float)
         aligned = weights_series.reindex(stock_returns.columns).fillna(0.0)
         weights = aligned.values
