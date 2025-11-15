@@ -304,6 +304,7 @@ source .venv/bin/activate
 python scripts/analyze_portfolio.py \
   --index russel3000 \
   --portfolio quob=results/portfolio_russel3000_quob_300.json \
+  --training-years 3 \
   --start-date 2014-01-02 \
   --end-date 2023-12-31 \
   --output-dir analyses/russel3000
@@ -318,6 +319,13 @@ several optimisation methods side by side. Each run writes:
   out-of-sample window.
 * `analyses/<label>/absolute_error.csv` – mean absolute tracking error per
   window.
+
+The analyser mirrors the optimisation workflow by replaying the three-year
+training windows (`--training-years`) before evaluating each rebalance. This
+ensures that older portfolio files—those produced before column metadata was
+saved—still align with the current data pipeline. If a portfolio was generated
+without filtering inactive securities, pass `--keep-inactive` so the backtest
+uses the same configuration.
 * `analyses/cumulative_returns.png`, `absolute_differences.png` and
   `error_distribution.png` – the key plots used during the S&P 500 analysis.
 * `analyses/summary_metrics.csv` – a compact table with the main statistics for

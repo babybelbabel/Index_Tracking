@@ -48,6 +48,8 @@ try:  # seaborn est optionnel : on bascule automatiquement sur matplotlib.
 except ModuleNotFoundError:  # pragma: no cover - dépendance optionnelle
     sns = None
 
+from dateutil.relativedelta import relativedelta
+
 from prafa.universe import Universe
 
 
@@ -137,6 +139,7 @@ def _compute_out_of_sample(
     universe_args: argparse.Namespace,
     portfolios: Dict[pd.Timestamp, PortfolioSnapshot],
     analysis_end: pd.Timestamp,
+    training_years: int,
 ) -> AnalysisResult:
     """Reproduit la logique d'évaluation hors-échantillon du notebook."""
 
@@ -153,6 +156,8 @@ def _compute_out_of_sample(
     tracking_error: dict[pd.Timestamp, float] = {}
     absolute_error: dict[pd.Timestamp, float] = {}
 
+    training_delta = relativedelta(years=training_years)
+
     for idx, rebalance_date in enumerate(sorted_dates):
         start = pd.Timestamp(rebalance_date)
         if start > analysis_end:
@@ -167,22 +172,19 @@ def _compute_out_of_sample(
         if end < start:
             continue
 
+        training_start = max(start - training_delta, universe.get_data_start_date())
+        universe.new_universe(training_start, start, training=True)
+        training_columns = universe.get_stock_namme_in_order()
+
         universe.new_universe(start, end, training=False)
         stock_returns = universe.get_stocks_returns()
         index_slice = universe.get_index_returns()
         snapshot = portfolios[rebalance_date]
 
-        if snapshot.columns is not None:
-            weights_series = pd.Series(snapshot.weights, index=snapshot.columns, dtype=float)
-            aligned = weights_series.reindex(stock_returns.columns).fillna(0.0)
-            weights = aligned.values
-        else:
-            weights = snapshot.weights
-            if stock_returns.shape[1] != weights.shape[0]:
-                raise ValueError(
-                    "Incohérence entre le nombre de titres dans les données et la longueur "
-                    "du vecteur de poids sauvegardé."
-                )
+        source_columns = snapshot.columns or training_columns
+        weights_series = pd.Series(snapshot.weights, index=source_columns, dtype=float)
+        aligned = weights_series.reindex(stock_returns.columns).fillna(0.0)
+        weights = aligned.values
 
         portfolio_series = pd.Series(
             stock_returns.values @ weights,
@@ -382,6 +384,12 @@ def parse_arguments() -> argparse.Namespace:
         help="Fréquence de rééquilibrage en mois (métadonnée)",
     )
     parser.add_argument(
+        "--training-years",
+        type=int,
+        default=3,
+        help="Largeur de la fenêtre d'entraînement utilisée lors de l'optimisation",
+    )
+    parser.add_argument(
         "--data-path",
         default="financial_data",
         help="Répertoire contenant les données de marché",
@@ -427,7 +435,12 @@ def main() -> None:
     results: Dict[str, AnalysisResult] = {}
     for label, path in portfolios.items():
         portfolio_data = _load_portfolios(path)
-        results[label] = _compute_out_of_sample(universe_args, portfolio_data, analysis_end)
+        results[label] = _compute_out_of_sample(
+            universe_args,
+            portfolio_data,
+            analysis_end,
+            training_years=args.training_years,
+        )
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
